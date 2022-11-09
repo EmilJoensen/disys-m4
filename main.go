@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	ping "github.itu.dk/eajo/disys-m4/grpc"
+	ping "github.com/eajo/disys-m4/grpc"
 	"google.golang.org/grpc"
 )
 
