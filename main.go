@@ -23,10 +23,9 @@ func main() {
 	defer cancel()
 
 	p := &peer{
-		id:            ownPort,
-		amountOfPings: make(map[int32]int32),
-		clients:       make(map[int32]ping.PingClient),
-		ctx:           ctx,
+		id:      ownPort,
+		clients: make(map[int32]ping.PingClient),
+		ctx:     ctx,
 	}
 
 	// Create listener tcp on port ownPort
@@ -66,7 +65,7 @@ func main() {
 		p.requesting_critical = true
 
 		flag := p.sendPingToAll()
-		if flag == 1 {
+		if flag == 0 {
 			p.requesting_critical = false
 			continue
 		}
@@ -96,21 +95,19 @@ type peer struct {
 }
 
 func (p *peer) Ping(ctx context.Context, req *ping.Request) (*ping.Reply, error) {
-	id := req.Id
-
 	if p.requesting_critical {
-		if req.sequence_number > p.sequence_number {
+		if req.SequenceNumber > p.sequence_number {
 			for p.requesting_critical {
-				time.Sleep(0.1 * time.Seconds())
+				time.Sleep(100 * time.Millisecond)
 			}
-		} else if req.sequence_number == p.sequence_number && req.id > p.id {
+		} else if req.SequenceNumber == p.sequence_number && req.Id > p.id {
 			for p.requesting_critical {
-				time.Sleep(0.1 * time.Seconds())
+				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}
 
-	rep := &ping.Reply{flag: 1}
+	rep := &ping.Reply{Flag: 1}
 	return rep, nil
 }
 
@@ -118,7 +115,7 @@ func (p *peer) sendPingToAll() int32 {
 	// Little bit of a cheat
 	p.sequence_number = time.Now().UnixNano()
 
-	request := &ping.Request{Id: p.id, sequence_number: p.sequence_number}
+	request := &ping.Request{Id: p.id, SequenceNumber: p.sequence_number}
 	for id, client := range p.clients {
 		reply, err := client.Ping(p.ctx, request)
 		if err != nil {
@@ -126,7 +123,7 @@ func (p *peer) sendPingToAll() int32 {
 			// Error handling
 			return 0
 		}
-		fmt.Printf("Got reply from id %v: %v\n", id, reply.flag)
+		fmt.Printf("Got reply from id %v: %v\n", id, reply.Flag)
 	}
 	return 1
 }
