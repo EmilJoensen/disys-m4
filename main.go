@@ -8,14 +8,16 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
+	"time"
 
-	ping "github.com/eajo/disys-m4/grpc"
+	ping "github.com/EmilJoensen/disys-m4/grpc"
 	"google.golang.org/grpc"
 )
 
 func main() {
 	arg1, _ := strconv.ParseInt(os.Args[1], 10, 32)
-	ownPort := int32(arg1) + 5000
+	ownPort := int32(arg1) + 8000
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -42,7 +44,7 @@ func main() {
 	}()
 
 	for i := 0; i < 3; i++ {
-		port := int32(5000) + int32(i)
+		port := int32(8000) + int32(i)
 
 		if port == ownPort {
 			continue
@@ -62,32 +64,45 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		p.sendPingToAll()
+
+		p.mu.Lock()
+
+		print("Doing important work.")
+		time.Sleep(1 * time.Second)
+		print("...")
+		time.Sleep(2 * time.Second)
+		print("Success!")
+
+		p.mu.Unlock()
 	}
 }
 
 type peer struct {
 	ping.UnimplementedPingServer
-	id            int32
-	amountOfPings map[int32]int32
-	clients       map[int32]ping.PingClient
-	ctx           context.Context
+	id              int32
+	sequence_number int32
+	clients         map[int32]ping.PingClient
+	ctx             context.Context
+	mu              sync.Mutex
 }
 
 func (p *peer) Ping(ctx context.Context, req *ping.Request) (*ping.Reply, error) {
 	id := req.Id
-	p.amountOfPings[id] += 1
 
-	rep := &ping.Reply{Amount: p.amountOfPings[id]}
+	rep := &ping.Reply{Flag: 1}
 	return rep, nil
 }
 
-func (p *peer) sendPingToAll() {
+func (p *peer) sendPingToAll() int32 {
 	request := &ping.Request{Id: p.id}
 	for id, client := range p.clients {
 		reply, err := client.Ping(p.ctx, request)
 		if err != nil {
 			fmt.Println("something went wrong")
+			// Error handling
+			return 0
 		}
-		fmt.Printf("Got reply from id %v: %v\n", id, reply.Amount)
+		fmt.Printf("Got reply from id %v: %v\n", id, reply.Flag)
 	}
+	return 1
 }
