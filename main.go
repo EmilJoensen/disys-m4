@@ -63,7 +63,13 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		p.sendPingToAll()
+		p.requesting_critical = true
+
+		flag := p.sendPingToAll()
+		if flag == 1 {
+			p.requesting_critical = false
+			continue
+		}
 
 		p.mu.Lock()
 
@@ -74,35 +80,53 @@ func main() {
 		print("Success!")
 
 		p.mu.Unlock()
+
+		p.requesting_critical = false
 	}
 }
 
 type peer struct {
 	ping.UnimplementedPingServer
-	id              int32
-	sequence_number int32
-	clients         map[int32]ping.PingClient
-	ctx             context.Context
-	mu              sync.Mutex
+	id                  int32
+	sequence_number     int64
+	clients             map[int32]ping.PingClient
+	ctx                 context.Context
+	requesting_critical bool
+	mu                  sync.Mutex
 }
 
 func (p *peer) Ping(ctx context.Context, req *ping.Request) (*ping.Reply, error) {
 	id := req.Id
 
-	rep := &ping.Reply{Flag: 1}
+	if p.requesting_critical {
+		if req.sequence_number > p.sequence_number {
+			for p.requesting_critical {
+				time.Sleep(0.1 * time.Seconds())
+			}
+		} else if req.sequence_number == p.sequence_number && req.id > p.id {
+			for p.requesting_critical {
+				time.Sleep(0.1 * time.Seconds())
+			}
+		}
+	}
+
+	rep := &ping.Reply{flag: 1}
 	return rep, nil
 }
 
 func (p *peer) sendPingToAll() int32 {
-	request := &ping.Request{Id: p.id}
+	// Little bit of a cheat
+	p.sequence_number = time.Now().UnixNano()
+
+	request := &ping.Request{Id: p.id, sequence_number: p.sequence_number}
 	for id, client := range p.clients {
 		reply, err := client.Ping(p.ctx, request)
 		if err != nil {
-			fmt.Println("something went wrong")
+			fmt.Println("Another client has died. Abort mission.")
 			// Error handling
 			return 0
 		}
-		fmt.Printf("Got reply from id %v: %v\n", id, reply.Flag)
+		fmt.Printf("Got reply from id %v: %v\n", id, reply.flag)
 	}
 	return 1
 }
